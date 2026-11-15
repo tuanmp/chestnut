@@ -1,0 +1,143 @@
+# Copyright (C) 2023-2025 CERN for the benefit of the ATLAS collaboration
+
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# 3rd party imports
+import os
+import logging
+import torch
+from tqdm import tqdm
+
+# Local imports
+from ..graph_construction_stage import GraphConstructionStage
+from . import utils
+from acorn.utils.pymmg_utils import configure_mmg_device
+from acorn.utils.loading_utils import (
+    remove_variable_name_prefix_in_pyg,
+    save_pyg,
+    pyg_exists,
+)
+
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+class PyMMGGraphBuilder(GraphConstructionStage):
+    def __init__(self, hparams):
+        super().__init__()
+        """
+        Initialize the PYMMGGraphBuilder model, a Python wrapper built on PyMMG (https://gitlab.cern.ch/gnn4itkteam/pymodulemapgraph) 
+        to interface with ModuleMapGraph (https://gitlab.cern.ch/gnn4itkteam/ModuleMapGraph).
+        """
+        # Logging config
+        self.log = logging.getLogger("ModuleMapGraph")
+        log_level = (
+            hparams["log_level"].upper() if "log_level" in hparams else "WARNING"
+        )
+
+        if log_level == "WARNING":
+            self.log.setLevel(logging.WARNING)
+        elif log_level == "INFO":
+            self.log.setLevel(logging.INFO)
+        elif log_level == "DEBUG":
+            self.log.setLevel(logging.DEBUG)
+        else:
+            raise ValueError(f"Unknown logging level {log_level}")
+
+        try:
+            from pymmg import GraphBuilder
+        except ImportError:
+            self.log.error(
+                "Failed to import GraphBuilder from pymmg. Please ensure pymmg is installed."
+            )
+            raise
+
+        device = configure_mmg_device(hparams)
+        self.device = "cuda"
+        self.log.info(f"Using CUDA device index {device}")
+
+        module_map_path = hparams.get("module_map_pattern_path", None)
+        self.log.debug(f"Module map pattern path: {module_map_path}")
+        if module_map_path is None:
+            raise ValueError(
+                "Module map pattern path is not provided in yaml configuration."
+            )
+        if not (
+            os.path.exists(module_map_path + ".doublets.root")
+            and os.path.exists(module_map_path + ".triplets.root")
+        ):
+            raise ValueError(
+                f"Module map pattern path {module_map_path} is not a valid pattern: missing triplets and/or doublets module map"
+            )
+
+        self._graph_builder = GraphBuilder(
+            module_map_path=module_map_path,
+            device=int(device),
+            nb_blocks=int(hparams.get("nb_blocks", 512)),
+        )
+        self.hparams = hparams
+
+    def to(self, device):
+        return self
+
+    def build_graphs(self, dataset, data_name):
+        """
+        Build the graphs for the data.
+        """
+
+        output_dir = os.path.join(self.hparams["stage_dir"], data_name)
+        os.makedirs(output_dir, exist_ok=True)
+        self.log.info(f"Building graphs for {data_name}")
+
+        for graph in tqdm(dataset):
+            if graph is None:
+                continue
+            if pyg_exists(
+                os.path.join(output_dir, f"event{graph.event_id}.pyg"),
+                subdir=self.hparams.get("subdir_size", None),
+            ):
+                print(f"Graph {graph.event_id} already exists, skipping...")
+                continue
+
+            graph = self.build_graph(graph)
+            if not self.hparams.get("variable_with_prefix"):
+                graph = remove_variable_name_prefix_in_pyg(graph)
+            save_pyg(
+                graph,
+                os.path.join(output_dir, f"event{graph.event_id}.pyg"),
+                subdir=self.hparams.get("subdir_size", None),
+            )
+
+    def build_graph(self, graph):
+
+        self.log.debug(graph)
+
+        graph.edge_index = self._graph_builder.build_edge_index(
+            hit_id=graph.hit_id,
+            hit_module_id=graph.hit_module_id,
+            hit_x=graph.hit_x,
+            hit_y=graph.hit_y,
+            hit_z=graph.hit_z,
+            nb_hits=graph.hit_id.shape[0],
+        )
+
+        y, truth_map = utils.graph_intersection(
+            graph.edge_index.to(device),
+            graph.track_edges.to(device),
+            return_y_pred=True,
+            return_truth_to_pred=True,
+        )
+        graph.edge_y = y.cpu()
+        graph.track_to_edge_map = truth_map.cpu()
+
+        return graph

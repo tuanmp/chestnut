@@ -1,0 +1,82 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chestnut"
+version = "0.0.1"
+description = "A flexible framework for graph neural neural networks"
+readme = { file = "README.md", content-type = "text/markdown" }
+license = { text = "Apache License, Version 2.0" }
+authors = [{ name = "Tuan Pham", email = "pmtuan@proton.me" }]
+keywords = ["track reconstruction", "graph networks", "machine learning"]
+dependencies = [
+    "jsonargparse[signatures]>=4.53.0",
+]
+
+[project.urls]
+Homepage = "https://gitlab.cern.ch/gnn4itkteam/acorn"
+
+[project.scripts]
+chestnut = "main:main"
+
+
+[project.optional-dependencies]
+gpu = ["cudf-cu12", "cugraph-cu12"]
+xrootd = ["xrootd"]
+
+[dependency-groups]
+runtime = [
+    "tqdm",
+    "ipykernel",
+    "atlasify",
+    "trackml @ git+https://github.com/LAL/trackml-library@master",
+    "networkx",
+    "seaborn",
+    "pyyaml",
+    "click",
+    "lightning==2.5.0",
+    "pytorch-lightning==2.5.0",
+    "torch==2.4.0",
+    "torchvision==0.19.0",
+    "torchaudio==2.4.0",
+    "torch-geometric",
+    "pyg_lib==0.4.0+pt24cu121",
+    "torch_scatter==2.1.2+pt24cu121",
+    "torch_sparse==0.6.18+pt24cu121",
+    "torch_cluster==1.6.3+pt24cu121",
+    "torch_spline_conv==1.2.2+pt24cu121",
+    "numpy<2",
+    "uproot<=5.3.1",
+    "class-resolver",
+    "onnxruntime",
+    "onnx",
+    "MonkeyType",
+    "wandb",
+    "scikit-learn",
+    "numba",
+    "polars",
+    "pyarrow",
+]
+dev = ["pytest", "pytest-cov", "black==22.8.0", "setuptools", "wheel"]
+
+[tool.setuptools.packages.find]
+include = ["chestnut", "chestnut.*"]
+
+[tool.black]
+line-length = 88
+exclude = '(\.git|\.tox|\.venv|_build|build|dist|chestnut\.egg-info|\.venv|docs|functorch)'
+
+[tool.uv]
+default-groups = ["dev", "runtime"]
+index-strategy = "unsafe-best-match"
+extra-index-url = [
+    "https://download.pytorch.org/whl/cu121",
+    "https://pypi.nvidia.com",
+]
+find-links = ["https://data.pyg.org/whl/torch-2.4.0+cu121.html"]
+no-build-isolation-package = ["chestnut"]
+[tool.pytest.ini_options]
+markers = [
+    "requires_data: needs the test data archives unpacked into tests/ (see tests/README.md)",
+]
