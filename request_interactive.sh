@@ -1,0 +1,1 @@
+srun --nodes 1 --gpus 1 --ntasks-per-node 1 --cpus-per-task 5 --mem 64G --time 4:00:00 -p gpu_v100_interactive --pty bash -i 

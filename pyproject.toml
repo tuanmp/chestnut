@@ -13,6 +13,7 @@ keywords = ["track reconstruction", "graph networks", "machine learning"]
 dependencies = [
     "jsonargparse[signatures]>=4.53.0",
 ]
+requires-python = ">=3.10"
 
 [project.urls]
 Homepage = "https://gitlab.cern.ch/gnn4itkteam/acorn"
