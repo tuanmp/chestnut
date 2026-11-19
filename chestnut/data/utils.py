@@ -1,7 +1,10 @@
+from typing import Any
+
 from torch.utils.data import DataLoader
 from torch_geometric.data import Batch, Data
 
 from chestnut.utils.loading_utils import (
+    gather_inputs,
     get_pyg_data_keys,
     handle_edge_features,
     handle_node_features,
@@ -33,6 +36,25 @@ class GraphUtilMixin:
 
         return event
 
+    @staticmethod
+    def gather_node_input(event, features):
+        """
+        Gather the input features for the event
+        """
+
+        event.node_features = gather_inputs(event, features)
+        for feat in features:
+            event.pop(feat, None)
+
+    @staticmethod
+    def gather_edge_input(event, features):
+        """
+        Gather the input features for the event
+        """
+
+        event.edge_features = gather_inputs(event, features)
+        for feat in features:
+            event.pop(feat, None)
 
 def collate_graph(batch):
     """

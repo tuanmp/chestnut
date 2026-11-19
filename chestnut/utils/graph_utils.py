@@ -1,25 +1,11 @@
-# Copyright (C) 2023 CERN for the benefit of the ATLAS collaboration
-
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#    http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import logging
 from typing import Optional, Tuple, Union
 
-import uproot
-
-import torch.nn as nn
 import torch
+from lightning.pytorch.utilities import rank_zero_warn
 from torch_geometric.nn import radius
+
+from chestnut.utils.version_utils import get_pyg_data_keys
 
 try:
     import frnn
@@ -35,27 +21,6 @@ except ImportError:
 if not torch.cuda.is_available():
     FRNN_AVAILABLE = False
     logging.warning("FRNN is not available, as no GPU is available")
-
-
-# ---------------------------- Dataset Processing -------------------------
-def load_module_map_uproot(filename):
-    """
-    Load in the module map from root file into a dataframe
-    """
-    with uproot.open(f"{filename}:TreeModuleTriplet") as tree:
-        df = tree.arrays(library="pd")
-        df = df.rename(
-            columns={
-                "Module1": "mid_1",
-                "Module2": "mid_2",
-                "Module3": "mid_3",
-                "Occurence": "occurence",
-            }
-        )
-        return df
-
-
-# ---------------------------- Edge Building ------------------------------
 
 
 def build_edges(
@@ -183,42 +148,22 @@ def graph_intersection(
     return return_tensors if len(return_tensors) > 1 else return_tensors[0]
 
 
-# ------------------------- Convenience Utilities ---------------------------
+def rearrange_by_distance(event, edge_index):
+    if "hit_R" not in get_pyg_data_keys(event):
+        rank_zero_warn(
+            "hit_R not found in the event, calculating it from hit_r and hit_z"
+        )
+        assert "hit_r" in get_pyg_data_keys(event) and "hit_z" in get_pyg_data_keys(
+            event
+        ), "event must contain R or contain r and z"
+        event.hit_R = event.hit_r**2 + event.hit_z**2
 
+    # flip edges that are pointing inward
+    edge_mask = (event.hit_R[edge_index[0]] > event.hit_R[edge_index[1]]) | (
+        (event.hit_R[edge_index[0]] == event.hit_R[edge_index[1]])
+        & (edge_index[0] > edge_index[1])
+    )
+    edge_index[:, edge_mask] = edge_index[:, edge_mask].flip(0)
 
-def make_mlp(
-    input_size,
-    sizes,
-    hidden_activation="ReLU",
-    output_activation=None,
-    layer_norm=False,
-    batch_norm=False,
-):
-    """Construct an MLP with specified fully-connected layers."""
-    hidden_activation = getattr(nn, hidden_activation)
-    if output_activation is not None:
-        output_activation = getattr(nn, output_activation)
-    layers = []
-    n_layers = len(sizes)
-    sizes = [input_size] + sizes
-    # Hidden layers
-    for i in range(n_layers - 1):
-        layers.append(nn.Linear(sizes[i], sizes[i + 1]))
-        if layer_norm:
-            layers.append(nn.LayerNorm(sizes[i + 1], elementwise_affine=False))
-        if batch_norm:
-            layers.append(
-                nn.BatchNorm1d(sizes[i + 1], track_running_stats=False, affine=False)
-            )
-        layers.append(hidden_activation())
-    # Final layer
-    layers.append(nn.Linear(sizes[-2], sizes[-1]))
-    if output_activation is not None:
-        if layer_norm:
-            layers.append(nn.LayerNorm(sizes[-1], elementwise_affine=False))
-        if batch_norm:
-            layers.append(
-                nn.BatchNorm1d(sizes[-1], track_running_stats=False, affine=False)
-            )
-        layers.append(output_activation())
-    return nn.Sequential(*layers)
+    return edge_index
+

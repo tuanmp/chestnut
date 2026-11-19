@@ -59,7 +59,12 @@ def make_mlp(
         if hidden_dropout > 0:
             layers.append(nn.Dropout(hidden_dropout))
     # Final layer
-    layers.append(nn.Linear(sizes[-2], sizes[-1]))
+    final_layer = (
+        nn.LazyLinear(sizes[-1])
+        if sizes[-2] is None
+        else nn.Linear(sizes[-2], sizes[-1])
+    )
+    layers.append(final_layer)
     if output_activation is not None:
         if output_layer_norm:
             layers.append(nn.LayerNorm(sizes[-1], elementwise_affine=False))

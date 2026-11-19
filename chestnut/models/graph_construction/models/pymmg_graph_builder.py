@@ -13,21 +13,22 @@
 # limitations under the License.
 
 # 3rd party imports
-import os
 import logging
+import os
+
 import torch
 from tqdm import tqdm
 
-# Local imports
-from ..graph_construction_stage import GraphConstructionStage
-from . import utils
-from acorn.utils.pymmg_utils import configure_mmg_device
-from acorn.utils.loading_utils import (
+from chestnut.utils.graph_utils import graph_intersection
+from chestnut.utils.loading_utils import (
+    pyg_exists,
     remove_variable_name_prefix_in_pyg,
     save_pyg,
-    pyg_exists,
 )
+from chestnut.utils.pymmg_utils import configure_mmg_device
 
+# Local imports
+from ..graph_construction_stage import GraphConstructionStage
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -131,7 +132,7 @@ class PyMMGGraphBuilder(GraphConstructionStage):
             nb_hits=graph.hit_id.shape[0],
         )
 
-        y, truth_map = utils.graph_intersection(
+        y, truth_map = graph_intersection(
             graph.edge_index.to(device),
             graph.track_edges.to(device),
             return_y_pred=True,

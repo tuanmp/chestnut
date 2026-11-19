@@ -12,18 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .models.metric_learning import MetricLearning
 from .models.double_metric_learning import DoubleMetricLearning
-from .models.py_module_map import PyModuleMap
-from .models.transformer_metric import TransformerMetricLearning
-from .models.gravnet import GravNetMetricLearning
+from .models.metric_learning import MetricLearning
 from .models.pymmg_graph_builder import PyMMGGraphBuilder
 
 __all__ = [
     "MetricLearning",
-    "PyModuleMap",
-    "TransformerMetricLearning",
-    "GravNetMetricLearning",
     "DoubleMetricLearning",
     "PyMMGGraphBuilder",
 ]

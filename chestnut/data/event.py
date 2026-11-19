@@ -1,9 +1,10 @@
 
 import os
+import re
 
 import pandas as pd
 from lightning import LightningDataModule
-from lightning.pytorch.utils.rank_zero import rank_zero_warn
+from lightning.pytorch.utilities.rank_zero import rank_zero_warn
 from torch_geometric.data import Dataset
 
 from chestnut.utils.loading_utils import (
@@ -14,7 +15,7 @@ from chestnut.utils.loading_utils import (
     pyg_exists,
 )
 
-from .utils import GraphUtilMixin
+from .utils import DataModuleMixin, GraphUtilMixin
 
 
 class EventDataset(Dataset, GraphUtilMixin):
@@ -99,7 +100,11 @@ class EventDataset(Dataset, GraphUtilMixin):
             graph = add_variable_name_prefix_in_pyg(graph)
         infer_num_nodes(graph)
         graph = self.apply_hard_cuts(graph)
+        # Derive hit_x/hit_y (and other derived node features) from the
+        # features already in the file, then scale and stack them.
+        graph = self.add_node_features(graph)
         self.scale_features(graph)
+        self.gather_node_input(graph, self.node_features)
         return graph
 
     def preprocess_hits(self, hits, graph):
@@ -181,7 +186,7 @@ class EventDataset(Dataset, GraphUtilMixin):
         return event
 
 
-class EventDataModule(LightningDataModule):
+class EventDataModule(DataModuleMixin, LightningDataModule):
     def __init__(self,
         input_dir,
         node_features,
@@ -228,9 +233,7 @@ class EventDataModule(LightningDataModule):
                 data_name=data_name,
                 num_events=data_num,
                 node_scales=self.node_scales,
-                preprocess=self.preprocess,
-                return_raw_event=self.return_raw_event,
-                return_processed_event=self.return_processed_event,
+                return_raw_events=self.return_raw_event,
                 variable_with_prefix=self.variable_with_prefix,
                 add_variable_name_prefix_in_pyg=self.add_variable_name_prefix_in_pyg,
                 hard_cuts=self.hard_cuts,

@@ -22,7 +22,7 @@ from chestnut.utils.loading_utils import (
 )
 from chestnut.utils.mapping_utils import remap_from_mask
 
-from .utils import GraphUtilMixin, collate_graph
+from .utils import DataModuleMixin, GraphUtilMixin, collate_graph
 
 
 class GraphDataset(Dataset, GraphUtilMixin):
@@ -117,13 +117,9 @@ class GraphDataset(Dataset, GraphUtilMixin):
             event = self.add_edge_features(
                 event
             )  # scaling must be done before adding features
-            event.edge_features = gather_inputs(event, self.edge_features)
-            for edge_feat in self.edge_features:
-                event.pop(edge_feat, None)  # remove the individual edge features after gathering
+            self.gather_edge_input(event, self.edge_features)
 
-        event.node_features = gather_inputs(event, self.node_features)
-        for node_feat in self.node_features:
-            event.pop(node_feat, None)  # remove the individual node features after scaling
+        self.gather_node_input(event, self.node_features)    # remove the individual node features after scaling
         return event
 
     def apply_hard_cuts(self, event):
@@ -208,7 +204,7 @@ class GraphDataset(Dataset, GraphUtilMixin):
 
 
 
-class GraphDataModule(LightningDataModule):
+class GraphDataModule(DataModuleMixin, LightningDataModule):
     def __init__(self,
         input_dir,
         node_features,
@@ -242,6 +238,7 @@ class GraphDataModule(LightningDataModule):
         self.weighting = weighting
         self.input_cut = input_cut
         self.max_training_graph_size = max_training_graph_size
+        self.num_workers = num_workers
 
 
     def setup(self, stage: str | None = None):

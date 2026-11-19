@@ -466,23 +466,82 @@ def handle_edge_features(event, edge_features):
         event.edge_rphislope = torch.nan_to_num(event.edge_rphislope, nan=0.0)
 
 
-def get_weight_mask(event, weight_conditions):
-    graph_mask = torch.ones_like(event.edge_y)
+# def get_weight_mask(event, weight_conditions):
+#     graph_mask = torch.ones_like(event.edge_y)
 
-    for condition_key, condition_val in weight_conditions.items():
-        assert condition_key in get_pyg_data_keys(
-            event
-        ), f"Condition key {condition_key} not found in event keys {get_pyg_data_keys(event)}"
-        condition_lambda = get_condition_lambda(condition_key, condition_val)
-        value_mask = condition_lambda(event)
-        graph_mask = graph_mask * map_tensor_handler(
+#     for condition_key, condition_val in weight_conditions.items():
+#         assert condition_key in get_pyg_data_keys(
+#             event
+#         ), f"Condition key {condition_key} not found in event keys {get_pyg_data_keys(event)}"
+#         condition_lambda = get_condition_lambda(condition_key, condition_val)
+#         value_mask = condition_lambda(event)
+#         graph_mask = graph_mask * map_tensor_handler(
+#             value_mask,
+#             output_type=VariableType.EDGE_LIKE,
+#             input_type=get_variable_type(condition_key),
+#             num_nodes=event.num_nodes,
+#             edge_index=event.edge_index,
+#             truth_map=event.track_to_edge_map,
+#         )
+
+#     return graph_mask
+
+def build_signal_edges(event, weighting_config, true_edges):
+    signal_mask = torch.zeros_like(true_edges[0], dtype=torch.bool)
+    for weight_spec in weighting_config:
+        if not weight_spec["conditions"]["edge_y"] or weight_spec["weight"] <= 0.0:
+            continue
+        # Copy weight_spec but remove the y condition
+        yless_weight_spec = weight_spec.copy()
+        yless_weight_spec["conditions"] = weight_spec["conditions"].copy()
+        yless_weight_spec["conditions"].pop("edge_y")
+        signal_mask |= get_weight_mask(
+            event,
+            yless_weight_spec["conditions"],
+            edge_index=true_edges,
+            track_to_edge_map=torch.arange(
+                true_edges.shape[1], device=true_edges.device
+            ),
+        )
+    return true_edges[:, signal_mask]
+
+def get_weight_mask(
+    event,
+    weight_conditions,
+    *,
+    edge_index=None,
+    track_to_edge_map=None,
+):
+    edge_index = event.edge_index if edge_index is None else edge_index
+    track_to_edge_map = (
+        event.track_to_edge_map
+        if track_to_edge_map is None
+        else track_to_edge_map
+    )
+    graph_mask = torch.ones(
+        edge_index.shape[1], dtype=torch.bool, device=edge_index.device
+    )
+
+    for key, value in weight_conditions.items():
+        value_mask = get_condition_lambda(key, value)(event)
+        mapped = map_tensor_handler(
             value_mask,
             output_type=VariableType.EDGE_LIKE,
-            input_type=get_variable_type(condition_key),
+            input_type=get_variable_type(key),
             num_nodes=event.num_nodes,
-            edge_index=event.edge_index,
-            truth_map=event.track_to_edge_map,
+            num_edges=edge_index.shape[1],
+            edge_index=edge_index,
+            truth_map=track_to_edge_map,
         )
+        if mapped.shape != graph_mask.shape:
+            if mapped.shape == (2, edge_index.shape[1]):
+                mapped = mapped.any(0)   # node mask -> edge mask
+            else:
+                raise ValueError(
+                    f"Condition {key} maps to {tuple(mapped.shape)},"
+                    f" expected {(edge_index.shape[1],)}"
+                )
+        graph_mask &= mapped
 
     return graph_mask
 
