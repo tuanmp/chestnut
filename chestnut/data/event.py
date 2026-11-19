@@ -1,6 +1,7 @@
 
 import os
 import re
+from pathlib import Path
 
 import pandas as pd
 from lightning import LightningDataModule
@@ -72,7 +73,10 @@ class EventDataset(Dataset, GraphUtilMixin):
                 f"{self.event_prefix}_{event_file_root_name}"
             )
 
-        event_path = os.path.join(self.input_dir, self.data_name, event_file_root_name)
+        event_path = self.event_paths.get(
+            self.evt_ids[idx],
+            os.path.join(self.input_dir, self.data_name, event_file_root_name),
+        )
 
         graph_path = (
             f"{event_path}-graph.pyg"
@@ -117,13 +121,15 @@ class EventDataset(Dataset, GraphUtilMixin):
         Returns a list of all event ids, which are the numbers in filenames that end in .csv and .pyg
         """
 
-        input_data_dir = os.path.join(self.input_dir, self.data_name)
-        all_files = os.listdir(input_data_dir) if os.path.isdir(input_data_dir) else []
-        all_files = [
-            f
-            for f in all_files
-            if f.endswith(".csv") or f.endswith(".pyg") or f.endswith(".pyg.gz")
-        ]
+        input_data_dir = Path(self.input_dir) / self.data_name
+        all_paths = (
+            list(input_data_dir.rglob("*.pyg*"))
+            + list(input_data_dir.rglob("*.csv"))
+            if input_data_dir.is_dir()
+            else []
+        )
+        path_by_name = {path.name: path for path in all_paths}
+        all_files = set(path_by_name)
         all_event_ids = sorted(
             list({re.findall("[0-9]+", file)[-1] for file in all_files})
         )
@@ -166,6 +172,30 @@ class EventDataset(Dataset, GraphUtilMixin):
         else:
             all_event_ids = pyg_event_ids
 
+        # Map event id -> path without the graph/csv suffix. This keeps support
+        # for both flat directories and sharded subdirectories.
+        event_paths = {}
+        for evt_id in all_event_ids:
+            target = f"{prefix}event{evt_id}"
+            candidates = (
+                f"{target}-graph.pyg.gz",
+                f"{target}-graph.pyg",
+                f"{target}.pyg.gz",
+                f"{target}.pyg",
+            )
+            for candidate in candidates:
+                path = path_by_name.get(candidate)
+                if path is None:
+                    continue
+                for suffix in ("-graph.pyg.gz", "-graph.pyg", ".pyg.gz", ".pyg"):
+                    if path.name.endswith(suffix):
+                        event_paths[evt_id] = str(
+                            path.with_name(path.name[: -len(suffix)])
+                        )
+                        break
+                break
+
+        self.event_paths = event_paths
         return all_event_ids
 
     def apply_hard_cuts(self, event, passing_hit_ids=None):

@@ -13,11 +13,13 @@
 # limitations under the License.
 
 from .models.double_metric_learning import DoubleMetricLearning
+from .models.fourier_metric_learning import FourierDoubleMetricLearning
 from .models.metric_learning import MetricLearning
 from .models.pymmg_graph_builder import PyMMGGraphBuilder
 
 __all__ = [
     "MetricLearning",
     "DoubleMetricLearning",
+    "FourierDoubleMetricLearning",
     "PyMMGGraphBuilder",
 ]
