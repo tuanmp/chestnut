@@ -395,6 +395,19 @@ def handle_node_features(event, node_features):
     for feature in node_features:
         if feature in get_pyg_data_keys(event):
             continue
+        if feature == "hit_x":
+            assert "hit_r" in get_pyg_data_keys(event) and "hit_phi" in get_pyg_data_keys(event), (
+                "hit_x is derived from hit_r and hit_phi, which the event does not"
+                f" carry. Node-like keys available: {sorted(k for k in get_pyg_data_keys(event) if k.startswith('hit_'))}"
+            )
+            event.hit_x = event.hit_r * torch.cos(event.hit_phi)
+        if feature == "hit_y":
+            assert "hit_r" in get_pyg_data_keys(event) and "hit_phi" in get_pyg_data_keys(event), (
+                "hit_y is derived from hit_r and hit_phi, which the event does not"
+                f" carry. Node-like keys available: {sorted(k for k in get_pyg_data_keys(event) if k.startswith('hit_'))}"
+            )
+            event.hit_y = event.hit_r * torch.sin(event.hit_phi)
+        
         for name, function in _ANGLE_DERIVED_NODE_FEATURES.items():
             if name not in feature:
                 continue

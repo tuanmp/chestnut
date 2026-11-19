@@ -14,35 +14,34 @@
 
 import os
 
-# 3rd party imports
-from ..graph_construction_stage import GraphConstructionStage
-
-from pytorch_lightning import LightningModule
-from torch_geometric.loader import DataLoader
 import torch
 import torch.nn.functional as F
+from acorn.stages.track_building.utils import rearrange_by_distance
+from acorn.utils import handle_weighting
+from acorn.utils.loading_utils import remove_variable_name_prefix_in_pyg, save_pyg
+from acorn.utils.version_utils import get_pyg_data_keys
+from pytorch_lightning import LightningModule
+from torch_geometric.loader import DataLoader
+
+from chestnut.utils.ml_utils import make_mlp
+
+# 3rd party imports
+from ..graph_construction_stage import GraphConstructionStage
+from ..utils import build_signal_edges  # handle_weighting
 
 # Local imports
-from .utils import make_mlp, build_edges, graph_intersection
-from ..utils import build_signal_edges  # handle_weighting
-from acorn.utils import handle_weighting
-from acorn.utils.version_utils import get_pyg_data_keys
-from acorn.utils.loading_utils import remove_variable_name_prefix_in_pyg, save_pyg
-from acorn.stages.track_building.utils import rearrange_by_distance
+from .utils import build_edges, graph_intersection
 
 
-class MetricLearning(GraphConstructionStage, LightningModule):
+class MetricLearning(LightningModule, GraphConstructionStage):
     def __init__(self, hparams):
         super().__init__()
         """
         Initialise the Lightning Module that can scan over different embedding training regimes
         """
-
-        # Construct the MLP architecture
-        in_channels = len(hparams["node_features"])
-
+        # use input_size = None to use LazyLinear for the first layer
         self.network = make_mlp(
-            in_channels,
+            None,
             [hparams["emb_hidden"]] * hparams["nb_layer"] + [hparams["emb_dim"]],
             hidden_activation=hparams["activation"],
             output_activation=None,
